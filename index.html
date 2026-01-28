@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام الحضور - عرض القاعات</title>
+    <!-- مكتبة QR Code (إزالتها لاحقًا) -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script> -->
+    <!-- مكتبة PapaParse -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- خطوط عربية -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            font-family: 'Cairo', sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        
+        .classroom-card {
+            transition: all 0.3s ease;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            min-height: 110px;
+            display: flex;
+            flex-direction: column;
+            padding: 8px;
+            font-size: 0.85rem;
+            position: relative;
+        }
+        
+        .classroom-empty {
+            background: linear-gradient(135deg, #ffd54f 0%, #ffb300 100%);
+            color: #5d4037;
+        }
+        
+        .classroom-absent {
+            background: linear-gradient(135deg, #ef5350 0%, #d32f2f 100%);
+            color: white;
+        }
+        
+        .classroom-present {
+            background: linear-gradient(135deg, #66bb6a 0%, #388e3c 100%);
+            color: white;
+        }
+        
+        .time-table {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            color: #333;
+        }
+        
+        .departure-board {
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        
+        .current-time {
+            font-size: 2.2rem;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+        
+        .marquee {
+            animation: marquee 30s linear infinite;
+            white-space: nowrap;
+        }
+        
+        @keyframes marquee {
+            0% { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+        
+        .room-name {
+            font-weight: bold;
+            font-size: 0.9rem;
+            text-align: center;
+            margin-bottom: 4px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            padding-bottom: 3px;
+        }
+        
+        .professor-name {
+            font-weight: 600;
+            text-align: center;
+            margin: 2px 0;
+            font-size: 0.85rem;
+        }
+        
+        .course-name {
+            text-align: center;
+            font-size: 0.8rem;
+            opacity: 0.9;
+            margin: 2px 0;
+        }
+        
+        .department-group {
+            text-align: center;
+            font-size: 0.75rem;
+            opacity: 0.8;
+            margin-top: 2px;
+        }
+        
+        /* جدول المحاضرات المتحرك */
+        .departure-board {
+            background: rgba(0, 0, 0, 0.85) !important;
+            border: 2px solid #00ff00 !important;
+            font-family: 'Courier New', monospace !important;
+            overflow: hidden !important;
+            position: relative !important;
+        }
+
+        /* حركة الجدول لأعلى تلقائياً */
+        @keyframes scrollUp {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-100%); }
+        }
+
+        .departure-board tbody {
+            animation: scrollUp 30s linear infinite;
+        }
+
+        .departure-board tbody:hover {
+            animation-play-state: paused;
+        }
+
+        /* أعمدة أوسع للمقياس */
+        .departure-board th:nth-child(3),
+        .departure-board td:nth-child(3) { /* عمود المقياس */
+            min-width: 120px !important; /* أوسع بكثير */
+            max-width: 150px !important;
+            text-align: right;
+        }
+
+        /* أعمدة أضيق للبقية */
+        .departure-board th:nth-child(1),
+        .departure-board td:nth-child(1) { /* الوقت */
+            width: 70px !important;
+            text-align: center;
+        }
+
+        .departure-board th:nth-child(2),
+        .departure-board td:nth-child(2) { /* القاعة */
+            width: 50px !important;
+            text-align: center;
+        }
+
+        .departure-board th:nth-child(4),
+        .departure-board td:nth-child(4) { /* الأستاذ */
+            width: 140px !important;
+            text-align: right;
+        }
+        
+        /* تأثير التألق الأخضر */
+        @keyframes glow {
+            0%, 100% { box-shadow: 0 0 5px #00ff00; }
+            50% { box-shadow: 0 0 20px #00ff00, 0 0 30px #00ff00; }
+        }
+
+        .departure-board {
+            animation: glow 3s infinite;
+        }
+        
+        .time-slot-badge {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: rgba(0,0,0,0.3);
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+        
+        .slot-1 { background: #4CAF50; }
+        .slot-2 { background: #2196F3; }
+        .slot-3 { background: #FF9800; }
+        .slot-4 { background: #9C27B0; }
+        .slot-5 { background: #795548; }
+        
+        /* تحديث: تكبير جدول المحاضرات */
+        .schedule-container {
+            max-height: 350px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body class="p-2">
+    <!-- صفحة تسجيل الدخول -->
+    <div id="loginPage" class="min-h-screen flex items-center justify-center">
+        <div class="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl">
+            <div class="text-center mb-6">
+                <h1 class="text-2xl font-bold text-gray-800 mb-2">
+                    <i class="fas fa-chalkboard-teacher text-blue-600"></i>
+                    نظام عرض القاعات
+                </h1>
+                <p class="text-gray-600 text-sm">الشاشة الرئيسية - عرض مباشر</p>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-gray-700 mb-1 text-sm font-medium">🏫 اختر الكلية</label>
+                    <select id="faculty" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                        <option value="">جاري تحميل الكليات...</option>
+                    </select>
+                </div>
+                
+                <div id="loginMessage" class="hidden p-2 rounded-lg text-xs"></div>
+                
+                <button onclick="startDisplay()" class="w-full bg-green-600 text-white p-3 rounded-lg hover:bg-green-700 transition duration-300 font-bold">
+                    <i class="fas fa-play mr-2"></i> بدء العرض
+                </button>
+            </div>
+            
+            <div class="mt-4 text-center text-gray-500 text-xs">
+                <p>© 2024 جامعة البشير الإبراهيمي - برج بوعريريج</p>
+                <p class="mt-1">شاشة عرض داخلية - تحديث مباشر</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- صفحة العرض الرئيسية -->
+    <div id="mainPage" class="hidden">
+        <!-- شريط العنوان -->
+        <div class="flex flex-col md:flex-row justify-between items-center mb-3 gap-2">
+            <div class="text-center md:text-right">
+                <h1 id="currentFaculty" class="text-lg md:text-xl font-bold flex items-center gap-2 justify-center md:justify-start">
+                    <i class="fas fa-university text-yellow-400"></i>
+                    <span id="facultyName" class="truncate">كلية العلوم الانسانية</span>
+                </h1>
+                <p class="text-gray-300 text-xs">نظام عرض القاعات الحية</p>
+            </div>
+            
+            <div class="text-center">
+                <div class="current-time" id="currentTime">00:00:00</div>
+                <div class="text-gray-300 text-xs" id="currentDate">الجمعة 15 مارس 2024</div>
+            </div>
+            
+            <div class="flex gap-2">
+                <button onclick="changeTimeSlot(-1)" class="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded-lg text-xs">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+                <span id="currentTimeSlotDisplay" class="bg-blue-800 px-3 py-1 rounded-lg text-sm font-bold">8:00-9:30</span>
+                <button onclick="changeTimeSlot(1)" class="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded-lg text-xs">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <button onclick="refreshData(true)" id="refreshBtn" class="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded-lg text-xs">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- المحتوى الرئيسي -->
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
+            <!-- القسم الأيسر: عرض القاعات -->
+            <div class="lg:col-span-3">
+                <div class="flex justify-between items-center mb-2">
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-base md:text-lg font-bold">
+                            <i class="fas fa-door-open"></i> القاعات
+                        </h2>
+                        <div class="flex gap-1">
+                            <div class="flex items-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                                <span class="text-xs">حاضر</span>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                                <span class="text-xs">غائب</span>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-yellow-500"></span>
+                                <span class="text-xs">شاغرة</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-xs bg-blue-900 px-2 py-1 rounded-lg">
+                        اليوم: <span id="currentDayDisplay" class="font-bold">السبت</span>
+                    </div>
+                </div>
+
+                <!-- شبكة القاعات -->
+                <div id="classroomsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-1.5">
+                    <!-- سيتم ملؤها بالجافاسكربت -->
+                </div>
+            </div>
+
+            <!-- القسم الأيمن: المعلومات (معدل) -->
+            <div class="space-y-3">
+                <!-- جدول المحاضرات (موسع) -->
+                <div class="time-table p-3 schedule-container">
+                    <h3 class="text-base font-bold mb-3 text-center text-gray-800">
+                        <i class="fas fa-clock"></i> جدول المحاضرات - اليوم كامل
+                    </h3>
+                    <div class="departure-board p-3 rounded-lg">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="text-green-400 border-b border-green-400">
+                                        <th class="py-2 px-2">الوقت</th>
+                                        <th class="py-2 px-2">القاعة</th>
+                                        <th class="py-2 px-2">المقياس</th>
+                                        <th class="py-2 px-2">الأستاذ</th>
+                                        <th class="py-2 px-2">الحالة</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="scheduleTable">
+                                    <!-- سيتم ملؤها بالجافاسكربت -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-xs text-gray-600 text-center">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        التحديث الآلي للغياب: كل ساعة ونصف (توقيت المحاضرة)
+                    </div>
+                </div>
+
+                <!-- إحصائيات -->
+                <div class="bg-gray-900 p-3 rounded-lg">
+                    <h4 class="text-sm font-bold mb-2 text-center">
+                        <i class="fas fa-chart-bar"></i> الإحصائيات الحية
+                    </h4>
+                    <div class="grid grid-cols-2 gap-2 text-center">
+                        <div class="bg-gray-800 p-2 rounded">
+                            <div class="text-xl font-bold text-blue-400" id="totalClassrooms">0</div>
+                            <div class="text-xs text-gray-300">إجمالي القاعات</div>
+                        </div>
+                        <div class="bg-gray-800 p-2 rounded">
+                            <div class="text-xl font-bold text-yellow-400" id="occupiedClassrooms">0</div>
+                            <div class="text-xs text-gray-300">محجوزة</div>
+                        </div>
+                        <div class="bg-gray-800 p-2 rounded">
+                            <div class="text-xl font-bold text-red-400" id="absentClassrooms">0</div>
+                            <div class="text-xs text-gray-300">غائب</div>
+                        </div>
+                        <div class="bg-gray-800 p-2 rounded">
+                            <div class="text-xl font-bold text-green-400" id="presentClassrooms">0</div>
+                            <div class="text-xs text-gray-300">حاضر</div>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-xs text-gray-400 text-center">
+                        <i class="fas fa-sync-alt mr-1"></i>
+                        آخر تحديث: <span id="lastUpdateTime">--:--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- الرسائل المتحركة -->
+        <div class="mt-3 bg-black p-1.5 rounded-lg overflow-hidden">
+            <div class="marquee whitespace-nowrap">
+                <span class="text-green-400 font-bold mx-2">🎓 جامعة البشير الإبراهيمي - برج بوعريريج</span>
+                <span class="text-yellow-400 mx-2" id="dateMarquee">📅 التاريخ: جاري التحميل...</span>
+                <span class="text-blue-400 mx-2">⏰ التوقيت: <span id="marqueeTime">00:00</span></span>
+                <span class="text-red-400 mx-2">⚠️ جميع الأساتذة حاضرون افتراضيًا - يتم التحقق من الغياب كل ساعة ونصف</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // إعدادات التطبيق
+        const CONFIG_SHEET_ID = '1bh6oUXadE386uTDAFq75UmfcdtfQTzavucpwUeLah4o';
+        
+        // توقيتات اليوم
+        const TIME_SLOTS = [
+            { id: 1, time: '09:30 - 08:00' },
+            { id: 2, time: '11:00 - 09:30' },
+            { id: 3, time: '12:30 - 11:00' },
+            { id: 4, time: '14:00 - 12:30' },
+            { id: 5, time: '15:30 - 14:00' },
+            { id: 6, time: '17:00 - 15:30' }
+        ];
+        
+        // أيام الأسبوع العربية
+        const DAYS_ARABIC = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+        
+        // متغيرات التطبيق
+        let currentFaculty = null;
+        let facultySheetId = null;
+        let currentSemester = null;
+        let currentDay = '';
+        let currentTimeSlot = 1;
+        let scheduleData = [];
+        let absentProfessors = new Set(); // تخزين الأساتذة الغائبين فقط
+        let attendanceRefreshTimer = null;
+        let lastUpdateTime = null;
+        
+        // تحميل الصفحة
+        document.addEventListener('DOMContentLoaded', function() {
+            updateDateTime();
+            setInterval(updateDateTime, 1000);
+            loadFaculties();
+        });
+        
+        // دالة تحميل الكليات
+        async function loadFaculties() {
+            try {
+                const url = `https://docs.google.com/spreadsheets/d/${CONFIG_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=users`;
+                const response = await fetch(url);
+                const csvText = await response.text();
+                
+                const select = document.getElementById('faculty');
+                select.innerHTML = '<option value="">اختر الكلية</option>';
+                
+                const lines = csvText.split('\n');
+                
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+                    
+                    const columns = parseCSVLine(line);
+                    if (columns.length >= 6 && columns[2] === '1') { // role = 1 (عميد)
+                        const facultyName = columns[3];
+                        const sheetId = columns[5];
+                        
+                        if (facultyName && sheetId) {
+                            const option = document.createElement('option');
+                            option.value = JSON.stringify({ name: facultyName, sheetId: sheetId });
+                            option.textContent = facultyName;
+                            select.appendChild(option);
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                console.error('خطأ في تحميل الكليات:', error);
+                showMessage('خطأ في تحميل الكليات', 'error');
+            }
+        }
+        
+        // دالة لتحليل سطر CSV
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            
+            result.push(current.trim());
+            return result;
+        }
+        
+        // دالة جلب الصفحة الحالية من base
+        async function loadFacultyBase(sheetId) {
+            try {
+                console.log('🔍 جلب آخر سداسي من base...');
+                
+                const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=base`;
+                const response = await fetch(url);
+                const csvText = await response.text();
+                
+                const lines = csvText.split('\n').filter(line => line.trim() !== '');
+                
+                if (lines.length < 2) {
+                    console.log('⚠️ لا يوجد بيانات كافية');
+                    return '2025_2026_s2';
+                }
+                
+                // السطر الأول: العناوين
+                const headers = parseCSVLine(lines[0]);
+                const semesterIndex = headers.findIndex(header => 
+                    header && header.trim().toLowerCase() === 'anne_semester'
+                );
+                
+                if (semesterIndex === -1) {
+                    console.log('⚠️ لم يتم العثور على عمود anne_semester');
+                    return '2025_2026_s2';
+                }
+                
+                // البحث من الأسفل للأعلى عن أول قيمة غير فارغة
+                for (let i = lines.length - 1; i >= 1; i--) {
+                    const columns = parseCSVLine(lines[i]);
+                    if (columns.length > semesterIndex) {
+                        const semester = columns[semesterIndex]?.trim();
+                        if (semester && semester !== '') {
+                            console.log('✅ وجدنا آخر سداسي غير فارغ:', semester);
+                            return semester;
+                        }
+                    }
+                }
+                
+                // إذا لم نجد أي قيمة غير فارغة، نعود للأولى
+                const firstDataLine = parseCSVLine(lines[1]);
+                const defaultSemester = firstDataLine[semesterIndex] || '2025_2026_s2';
+                console.log('⚠️ استخدام أول قيمة كبديل:', defaultSemester);
+                
+                return defaultSemester;
+                
+            } catch (error) {
+                console.error('❌ خطأ في جلب بيانات base:', error);
+                return '2025_2026_s2';
+            }
+        }
+        
+        // دالة جلب جدول التوزيع
+        async function loadSchedule(sheetId, semesterPage) {
+            try {
+                const today = new Date();
+                const dayName = DAYS_ARABIC[today.getDay()];
+                currentDay = dayName;
+
+                // تحميل صفحة السداسي
+                const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(semesterPage)}`;
+                const response = await fetch(url);
+                const csvText = await response.text();
+
+                if (csvText.startsWith('Error')) {
+                    console.error('❌ صفحة السداسي غير موجودة:', semesterPage);
+                    return [];
+                }
+
+                console.log('✅ تم تحميل صفحة السداسي:', semesterPage);
+                return parseScheduleCSV(csvText, dayName);
+
+            } catch (error) {
+                console.error('خطأ في جلب جدول التوزيع:', error);
+                return [];
+            }
+        }
+        
+        // دالة لتحليل جدول CSV
+        function parseScheduleCSV(csvText, dayName) {
+            const schedule = [];
+            const lines = csvText.split('\n');
+            
+            if (lines.length < 2) {
+                console.log('لا توجد بيانات كافية في الجدول');
+                return schedule;
+            }
+            
+            // السطر الأول: العناوين
+            const headers = parseCSVLine(lines[0]);
+            
+            // العثور على مواقع الأعمدة
+            const findColumnIndex = (columnNames) => {
+                for (const name of columnNames) {
+                    for (let i = 0; i < headers.length; i++) {
+                        if (headers[i] && headers[i].trim() === name) {
+                            return i;
+                        }
+                    }
+                }
+                return -1;
+            };
+            
+            const قسمIndex = findColumnIndex(['القسم', 'department']) || 0;
+            const تخصصIndex = findColumnIndex(['التخصص', 'specialization', 'specialite']) || 1;
+            const مقياسIndex = findColumnIndex(['المقياس', 'course', 'matiere']) || 2;
+            const حصةIndex = findColumnIndex(['الحصة', 'group', 'groupe']) || 3;
+            const استاذIndex = findColumnIndex(['الاستاذ', 'professor', 'prof']) || 4;
+            const يومIndex = findColumnIndex(['اليوم', 'day', 'jour']) || 5;
+            const توقيتIndex = findColumnIndex(['التوقيت', 'time', 'temps', 'heure']) || 6;
+            const قاعةIndex = findColumnIndex(['القاعة', 'classroom', 'salle']) || 7;
+            
+            // معالجة السطور (البيانات)
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+                
+                const columns = parseCSVLine(line);
+                
+                if (columns.length >= 2) {
+                    // التحقق من أن اليوم يتطابق مع اليوم المطلوب
+                    const dayValue = columns[يومIndex] ? columns[يومIndex].trim() : '';
+                    
+                    if (dayValue === dayName) {
+                        const item = {
+                            القسم: columns[قسمIndex] || '',
+                            التخصص: columns[تخصصIndex] || '',
+                            المقياس: columns[مقياسIndex] || '',
+                            الحصة: columns[حصةIndex] || '',
+                            الاستاذ: columns[استاذIndex] || '',
+                            اليوم: dayValue,
+                            التوقيت: columns[توقيتIndex] || '',
+                            القاعة: columns[قاعةIndex] || '',
+                            isPresent: true // الافتراضي: حاضر
+                        };
+                        
+                        schedule.push(item);
+                    }
+                }
+            }
+            
+            console.log('عدد المحاضرات المضافة:', schedule.length);
+            return schedule;
+        }
+        
+        // دالة جلب الأساتذة الغائبين فقط (كل ساعة ونصف)
+        async function loadAbsentProfessors(sheetId) {
+            try {
+                const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=profs`;
+                const response = await fetch(url);
+                const csvText = await response.text();
+
+                const absentSet = new Set();
+                const today = new Date();
+                const todayISO = today.toISOString().split('T')[0];
+                const todayDMY = today.toLocaleDateString('en-GB');
+                const todayMD = `${today.getDate().toString().padStart(2,'0')}/${(today.getMonth()+1).toString().padStart(2,'0')}`;
+
+                // استخدام PapaParse
+                const parsed = Papa.parse(csvText, { skipEmptyLines: true });
+                const rows = parsed.data;
+
+                if (!rows || rows.length < 2) return absentSet;
+
+                // الصف الأول: العناوين
+                const headers = rows[0].map(h => h.trim().toLowerCase());
+
+                // البحث عن عمود الاسم
+                const nameCandidates = ['name','الاسم','الأستاذ','professor','teacher'];
+                const nameIndex = headers.findIndex(h => nameCandidates.includes(h));
+
+                // البحث عن عمود الحضور
+                const attendanceCandidates = ['attendance','الحضور','presence'];
+                const attendanceIndex = headers.findIndex(h => attendanceCandidates.includes(h));
+
+                if (nameIndex === -1 || attendanceIndex === -1) {
+                    console.error('❌ الأعمدة غير مكتملة');
+                    return absentSet;
+                }
+
+                // معالجة كل صف
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+
+                    const professorName = (row[nameIndex] || '').trim();
+                    const attendanceCell = (row[attendanceIndex] || '').trim();
+
+                    if (!professorName) continue;
+
+                    // إذا كان هناك تاريخ في عمود الحضور، فإن الأستاذ غائب
+                    if (attendanceCell) {
+                        const cleaned = attendanceCell.replace(/[\[\]{}"]/g,'');
+                        const dates = cleaned.split(/[,;]+/).map(d => d.trim());
+
+                        // التحقق من أي تاريخ يطابق اليوم
+                        for (const d of dates) {
+                            if (d.includes(todayISO) || d.includes(todayDMY) || d.includes(todayMD)) {
+                                absentSet.add(professorName);
+                                console.log(`❌ ${professorName} - غائب`);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                console.log(`✅ تم تحميل ${absentSet.size} أستاذ غائب`);
+                return absentSet;
+
+            } catch (err) {
+                console.error('❌ خطأ في تحميل الغياب:', err);
+                return new Set();
+            }
+        }
+        
+        // دالة جلب الحصص التعويضية
+        async function loadMakeupClasses(sheetId) {
+            try {
+                const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=ratrape`;
+                const response = await fetch(url);
+                const csvText = await response.text();
+                
+                return parseMakeupCSV(csvText);
+            } catch (error) {
+                console.error('خطأ في جلب الحصص التعويضية:', error);
+                return [];
+            }
+        }
+        
+        // دالة تحليل بيانات الحصص التعويضية
+        function parseMakeupCSV(csvText) {
+            const makeupClasses = [];
+            const lines = csvText.split('\n');
+            
+            const today = new Date();
+            const currentYear = today.getFullYear();
+            const currentMonth = today.getMonth() + 1;
+            const currentDay = today.getDate();
+            
+            if (lines.length < 2) return makeupClasses;
+            
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+                
+                const columns = parseCSVLine(line);
+                
+                if (columns.length >= 9) {
+                    const classDate = columns[4] || '';
+                    
+                    const dateParts = classDate.split('-');
+                    if (dateParts.length === 3) {
+                        const classYear = parseInt(dateParts[0]);
+                        const classMonth = parseInt(dateParts[1]);
+                        const classDay = parseInt(dateParts[2]);
+                        
+                        if (classYear === currentYear && classMonth === currentMonth && classDay === currentDay) {
+                            const item = {
+                                القسم: columns[0] || '',
+                                التخصص: columns[1] || '',
+                                الحصة: columns[2] || '',
+                                المقياس: columns[3] || '',
+                                التاريخ: classDate,
+                                اليوم: columns[5] || '',
+                                التوقيت: columns[6] || '',
+                                القاعة: columns[7] || '',
+                                الاستاذ: columns[8] || '',
+                                isMakeup: true,
+                                isPresent: true // الافتراضي: حاضر
+                            };
+                            
+                            makeupClasses.push(item);
+                        }
+                    }
+                }
+            }
+            
+            console.log('إجمالي الحصص التعويضية لهذا اليوم:', makeupClasses.length);
+            return makeupClasses;
+        }
+        
+        // بدء العرض
+        async function startDisplay() {
+            const facultySelect = document.getElementById('faculty');
+            const selectedValue = facultySelect.value;
+            
+            if (!selectedValue) {
+                showMessage('يرجى اختيار الكلية', 'error');
+                return;
+            }
+            
+            try {
+                const facultyData = JSON.parse(selectedValue);
+                currentFaculty = facultyData.name;
+                facultySheetId = facultyData.sheetId;
+                
+                showMessage('جاري تحميل البيانات...', 'info');
+                
+                // جلب الصفحة الحالية
+                currentSemester = await loadFacultyBase(facultySheetId);
+                console.log('الصفحة الحالية:', currentSemester);
+                
+                // تحديث الواجهة
+                document.getElementById('facultyName').textContent = currentFaculty;
+                
+                // تحميل البيانات
+                await loadAllData();
+                
+                // بدء التحديث التلقائي للغياب كل ساعة ونصف
+                startAbsenceAutoRefresh();
+                
+                // الانتقال للصفحة الرئيسية
+                document.getElementById('loginPage').classList.add('hidden');
+                document.getElementById('mainPage').classList.remove('hidden');
+                
+                showMessage('تم تحميل البيانات بنجاح', 'success');
+                
+            } catch (error) {
+                console.error('خطأ في بدء العرض:', error);
+                showMessage('خطأ في تحميل البيانات', 'error');
+            }
+        }
+        
+        // تحميل جميع البيانات
+        async function loadAllData() {
+            try {
+                // جلب جدول التوزيع العادي
+                scheduleData = await loadSchedule(facultySheetId, currentSemester);
+                
+                // جلب الحصص التعويضية
+                const makeupClasses = await loadMakeupClasses(facultySheetId);
+                
+                // دمج الحصص التعويضية مع الجدول العادي
+                scheduleData = [...scheduleData, ...makeupClasses];
+                
+                console.log('إجمالي المحاضرات بعد الدمج:', scheduleData.length);
+                
+                // جلب الأساتذة الغائبين فقط
+                absentProfessors = await loadAbsentProfessors(facultySheetId);
+                
+                // تحديث حالة الحضور في scheduleData بناءً على الغياب
+                updateAttendanceStatus();
+                
+                // تحديث العرض
+                updateDisplay();
+                
+                // تحديث وقت آخر تحديث
+                updateLastUpdateTime();
+                
+            } catch (error) {
+                console.error('خطأ في تحميل البيانات:', error);
+                showMessage('خطأ في تحميل البيانات من الخادم', 'error');
+            }
+        }
+        
+        // تحديث حالة الحضور بناءً على الغياب
+        function updateAttendanceStatus() {
+            scheduleData.forEach(lecture => {
+                // إذا كان الأستاذ في مجموعة الغائبين
+                if (absentProfessors.has(lecture.الاستاذ)) {
+                    lecture.isPresent = false;
+                } else {
+                    lecture.isPresent = true; // الافتراضي: حاضر
+                }
+            });
+        }
+        
+        // بدء التحديث التلقائي للغياب كل ساعة ونصف
+        function startAbsenceAutoRefresh() {
+            // إيقاف أي مؤقت سابق
+            if (attendanceRefreshTimer) {
+                clearInterval(attendanceRefreshTimer);
+            }
+            
+            // بدء التحديث كل 90 دقيقة (ساعة ونصف)
+            attendanceRefreshTimer = setInterval(async () => {
+                console.log('⏰ تحديث تلقائي للغياب (كل ساعة ونصف)...');
+                
+                if (facultySheetId) {
+                    try {
+                        // تحديث بيانات الغياب فقط
+                        absentProfessors = await loadAbsentProfessors(facultySheetId);
+                        
+                        // تحديث حالة الحضور
+                        updateAttendanceStatus();
+                        
+                        // تحديث العرض
+                        updateDisplay();
+                        
+                        // تحديث وقت آخر تحديث
+                        updateLastUpdateTime();
+                        
+                        console.log('✅ تم تحديث بيانات الغياب بنجاح');
+                        
+                    } catch (error) {
+                        console.error('❌ خطأ في التحديث التلقائي:', error);
+                    }
+                }
+            }, 90 * 60 * 1000); // 90 دقيقة بالمللي ثانية
+        }
+        
+        // تحديث وقت آخر تحديث
+        function updateLastUpdateTime() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('ar-EG', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            lastUpdateTime = now;
+            document.getElementById('lastUpdateTime').textContent = timeStr;
+        }
+        
+        // تحديث العرض
+        function updateDisplay() {
+            updateClassroomsGrid();
+            updateScheduleTable();
+            updateStatistics();
+            updateDayDisplay();
+        }
+        
+        // تحديث شبكة القاعات
+        function updateClassroomsGrid() {
+            const currentSlot = TIME_SLOTS[currentTimeSlot - 1];
+            const grid = document.getElementById('classroomsGrid');
+            
+            // تجميع القاعات الفريدة
+            const uniqueRooms = new Set();
+            scheduleData.forEach(item => {
+                if (item.القاعة && item.القاعة.trim()) {
+                    uniqueRooms.add(item.القاعة.trim());
+                }
+            });
+            
+            const roomsArray = Array.from(uniqueRooms).sort();
+            grid.innerHTML = '';
+            
+            let presentCount = 0;
+            let absentCount = 0;
+            let occupiedCount = 0;
+            
+            roomsArray.forEach(room => {
+                // البحث عن المحاضرات في هذه القاعة للتوقيت واليوم الحاليين
+                const lecturesInRoom = scheduleData.filter(item => {
+                    const matchesRoom = item.القاعة && item.القاعة.trim() === room;
+                    const matchesDay = item.اليوم && item.اليوم.trim() === currentDay;
+                    const matchesTime = item.التوقيت && item.التوقيت.includes(currentSlot.time);
+                    
+                    return matchesRoom && matchesDay && matchesTime;
+                });
+                
+                let status = 'empty'; // الافتراضي: شاغرة (صفراء)
+                let lecture = null;
+                
+                if (lecturesInRoom.length > 0) {
+                    lecture = lecturesInRoom[0];
+                    
+                    // التحقق من حالة الحضور
+                    if (lecture.isPresent === false) {
+                        status = 'absent'; // غائب (أحمر)
+                        absentCount++;
+                    } else {
+                        status = 'present'; // حاضر (أخضر)
+                        presentCount++;
+                    }
+                    
+                    occupiedCount++;
+                }
+                
+                // إنشاء بطاقة القاعة
+                const card = createClassroomCard(room, status, lecture);
+                grid.appendChild(card);
+            });
+            
+            // تحديث الإحصائيات
+            document.getElementById('totalClassrooms').textContent = roomsArray.length;
+            document.getElementById('occupiedClassrooms').textContent = occupiedCount;
+            document.getElementById('absentClassrooms').textContent = absentCount;
+            document.getElementById('presentClassrooms').textContent = presentCount;
+        }
+        
+        // إنشاء بطاقة القاعة
+        function createClassroomCard(roomName, status, lecture) {
+            let statusClass, slotClass = '';
+            
+            switch(status) {
+                case 'present':
+                    statusClass = 'classroom-present';
+                    slotClass = 'slot-1';
+                    break;
+                case 'absent':
+                    statusClass = 'classroom-absent';
+                    slotClass = 'slot-2';
+                    break;
+                default:
+                    statusClass = 'classroom-empty';
+                    slotClass = 'slot-3';
+            }
+            
+            const card = document.createElement('div');
+            card.className = `classroom-card ${statusClass}`;
+            
+            let content = `
+                <div class="time-slot-badge ${slotClass}">
+                    ${currentTimeSlot}
+                </div>
+                <div class="room-name">${roomName}</div>`;
+            
+            if (lecture) {
+                const professorName = lecture.الاستاذ || 'غير معروف';
+                const courseName = lecture.المقياس || 'بدون مقياس';
+                const department = lecture.التخصص || '';
+                const group = lecture.الحصة || '';
+                const isMakeup = lecture.isMakeup;
+                const makeupBadge = isMakeup ? 
+                    '<div class="absolute top-0 left-0 bg-purple-600 text-white text-xs px-1 rounded-bl">تعويض</div>' : '';
+                
+                // إضافة علامة الغياب إذا كان الأستاذ غائبًا
+                const absentBadge = !lecture.isPresent ? 
+                    '<div class="absolute top-0 left-8 bg-red-600 text-white text-xs px-1 rounded-bl">غائب</div>' : '';
+                
+                content += `
+                    ${makeupBadge}
+                    ${absentBadge}
+                    <div class="professor-name">
+                        ${professorName}
+                    </div>
+                    <div class="course-name">
+                        ${courseName}
+                    </div>
+                    <div class="department-group">
+                        ${department} ${group ? '| ' + group : ''}
+                    </div>`;
+            } else {
+                content += `
+                    <div class="professor-name">
+                        <i class="fas fa-door-open"></i>
+                    </div>
+                    <div class="course-name">قاعة شاغرة</div>
+                    <div class="department-group">${currentDay}</div>`;
+            }
+            
+            card.innerHTML = content;
+            return card;
+        }
+        
+        // تحديث جدول المحاضرات
+        function updateScheduleTable() {
+            const table = document.getElementById('scheduleTable');
+            
+            // جميع محاضرات اليوم
+            const todayLectures = scheduleData.filter(item => {
+                return item.اليوم && item.اليوم.trim() === currentDay;
+            });
+            
+            // ترتيب المحاضرات حسب وقت البداية
+            todayLectures.sort((a, b) => {
+                const timeA = extractStartTime(a.التوقيت || '');
+                const timeB = extractStartTime(b.التوقيت || '');
+                return timeA - timeB;
+            });
+            
+            table.innerHTML = '';
+            
+            if (todayLectures.length === 0) {
+                table.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-green-400">◼ لا توجد محاضرات اليوم ◼</td></tr>';
+                table.style.animation = 'none';
+                return;
+            }
+            
+            // إنشاء الجدول مع جميع المحاضرات
+            todayLectures.forEach((lecture, index) => {
+                const status = lecture.isPresent ? 'حاضر' : 'غائب';
+                const statusColor = lecture.isPresent ? 'text-green-400' : 'text-red-400';
+                const statusIcon = lecture.isPresent ? '✅' : '❌';
+                
+                const timeDisplay = formatTime(lecture.التوقيت || '');
+                
+                // تمييز المحاضرة الحالية إذا كانت في التوقيت الحالي
+                const isCurrentTime = isCurrentLecture(lecture.التوقيت || '');
+                
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-700 hover:bg-green-900';
+                
+                if (isCurrentTime) {
+                    row.className += ' bg-green-800 bg-opacity-50';
+                }
+                
+                row.innerHTML = `
+                    <td class="py-2 px-2 font-mono ${isCurrentTime ? 'text-yellow-300 font-bold' : 'text-green-300'} text-center">
+                        ${timeDisplay}
+                    </td>
+                    <td class="py-2 px-2 ${isCurrentTime ? 'text-yellow-300 font-bold' : 'text-yellow-300'} text-center font-bold">
+                        ${lecture.القاعة || '--'}
+                    </td>
+                    <td class="py-2 px-2 ${isCurrentTime ? 'text-yellow-300' : 'text-white'} text-right font-medium truncate" 
+                        title="${lecture.المقياس || ''}">
+                        ${lecture.المقياس || 'بدون مقياس'}
+                    </td>
+                    <td class="py-2 px-2 ${isCurrentTime ? 'text-yellow-300' : 'text-white'} text-right font-mono truncate" 
+                        title="${lecture.الاستاذ || ''}">
+                        ${lecture.الاستاذ || 'غير معروف'}
+                    </td>
+                    <td class="py-2 px-2 ${statusColor} text-center font-bold">
+                        ${statusIcon} ${status}
+                    </td>
+                `;
+                table.appendChild(row);
+            });
+            
+            // تفعيل الحركة التلقائية إذا كان هناك أكثر من 5 محاضرات
+            if (todayLectures.length > 5) {
+                const animationDuration = todayLectures.length * 3;
+                table.style.animation = `scrollUp ${animationDuration}s linear infinite`;
+            } else {
+                table.style.animation = 'none';
+            }
+        }
+        
+        // دوال مساعدة للوقت
+        function extractStartTime(timeStr) {
+            if (!timeStr) return 0;
+            
+            try {
+                const parts = timeStr.split(' - ');
+                let timePart = parts[0];
+                
+                if (parts.length === 2) {
+                    const time1 = convertTimeToMinutes(parts[0]);
+                    const time2 = convertTimeToMinutes(parts[1]);
+                    timePart = time1 < time2 ? parts[0] : parts[1];
+                }
+                
+                return convertTimeToMinutes(timePart);
+            } catch (e) {
+                return 0;
+            }
+        }
+        
+        function convertTimeToMinutes(timeStr) {
+            if (!timeStr) return 0;
+            
+            const time = timeStr.trim();
+            const [hours, minutes] = time.split(':').map(Number);
+            return (hours || 0) * 60 + (minutes || 0);
+        }
+        
+        function formatTime(timeStr) {
+            if (!timeStr) return '--:--';
+            
+            const parts = timeStr.split(' - ');
+            if (parts.length === 2) {
+                return parts[1];
+            }
+            
+            return timeStr;
+        }
+        
+        function isCurrentLecture(timeStr) {
+            if (!timeStr) return false;
+            
+            const now = new Date();
+            const currentHour = now.getHours();
+            const currentMinute = now.getMinutes();
+            const currentTime = currentHour * 60 + currentMinute;
+            
+            const parts = timeStr.split(' - ');
+            if (parts.length === 2) {
+                const startTime = convertTimeToMinutes(parts[0]);
+                const endTime = convertTimeToMinutes(parts[1]);
+                
+                return currentTime >= Math.min(startTime, endTime) && 
+                       currentTime <= Math.max(startTime, endTime);
+            }
+            
+            return false;
+        }
+        
+        // تحديث الإحصائيات
+        function updateStatistics() {
+            // تم تحديثها في updateClassroomsGrid
+        }
+        
+        // تحديث عرض اليوم
+        function updateDayDisplay() {
+            document.getElementById('currentDayDisplay').textContent = currentDay;
+            document.getElementById('currentTimeSlotDisplay').textContent = TIME_SLOTS[currentTimeSlot - 1].time;
+        }
+        
+        // تغيير التوقيت
+        function changeTimeSlot(direction) {
+            const newSlot = currentTimeSlot + direction;
+            
+            if (newSlot >= 1 && newSlot <= TIME_SLOTS.length) {
+                currentTimeSlot = newSlot;
+                updateDisplay();
+            }
+        }
+        
+        // تحديث البيانات يدويًا
+        async function refreshData(showMessageFlag = true) {
+            const btn = document.getElementById('refreshBtn');
+            if (btn) {
+                const icon = btn.querySelector('i');
+                const originalClass = icon.className;
+                
+                btn.disabled = true;
+                icon.className = 'fas fa-spinner fa-spin';
+                
+                try {
+                    await loadAllData();
+                    if (showMessageFlag) {
+                        showMessage('تم تحديث البيانات', 'success');
+                    }
+                } catch (error) {
+                    console.error('خطأ في تحديث البيانات:', error);
+                    if (showMessageFlag) {
+                        showMessage('خطأ في تحديث البيانات', 'error');
+                    }
+                } finally {
+                    setTimeout(() => {
+                        btn.disabled = false;
+                        icon.className = originalClass;
+                    }, 1000);
+                }
+            }
+        }
+        
+        // تحديث الوقت والتاريخ
+        function updateDateTime() {
+            const now = new Date();
+            
+            // الساعة بأرقام إنجليزية
+            const timeStr = now.toLocaleTimeString('en-GB', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+            
+            // التاريخ بأرقام إنجليزية
+            const dateStr = new Intl.DateTimeFormat('ar-EG', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            }).format(now);
+            
+            const englishDate = dateStr
+                .replace(/[٠١٢٣٤٥٦٧٨٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+                .replace(/[۰۱۲۳۴۵۶۷۸۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+            
+            // الوقت للشريط المتحرك (بدون ثواني)
+            const shortTime = now.toLocaleTimeString('en-GB', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                hour12: false
+            });
+            
+            // تحديث الساعة
+            document.getElementById('currentTime').textContent = timeStr;
+            
+            // تحديث التاريخ
+            document.getElementById('currentDate').textContent = englishDate;
+            
+            // تحديث شريط الرسائل
+            document.getElementById('marqueeTime').textContent = shortTime;
+            
+            const dateMarquee = document.getElementById('dateMarquee');
+            if (dateMarquee) {
+                dateMarquee.textContent = `📅 ${englishDate}`;
+            }
+            
+            // تغيير التوقيت التلقائي
+            if (currentFaculty) {
+                const currentHour = now.getHours();
+                const currentMinute = now.getMinutes();
+                const currentTime = currentHour + currentMinute / 60;
+                
+                let newTimeSlot = 1;
+                
+                if (currentTime >= 8 && currentTime < 9.5) newTimeSlot = 1;
+                else if (currentTime >= 9.5 && currentTime < 11) newTimeSlot = 2;
+                else if (currentTime >= 11 && currentTime < 12.5) newTimeSlot = 3;
+                else if (currentTime >= 12.5 && currentTime < 14) newTimeSlot = 4;
+                else if (currentTime >= 14 && currentTime < 15.5) newTimeSlot = 5;
+                else if (currentTime >= 15.5 && currentTime < 17) newTimeSlot = 6;
+                
+                if (newTimeSlot !== currentTimeSlot) {
+                    currentTimeSlot = newTimeSlot;
+                    updateDisplay();
+                }
+            }
+        }
+        
+        // دالة عرض الرسائل
+        function showMessage(message, type) {
+            const messageDiv = document.getElementById('loginMessage');
+            messageDiv.textContent = message;
+            messageDiv.className = '';
+            
+            switch(type) {
+                case 'success':
+                    messageDiv.className = 'bg-green-100 text-green-700 border border-green-300';
+                    break;
+                case 'error':
+                    messageDiv.className = 'bg-red-100 text-red-700 border border-red-300';
+                    break;
+                case 'info':
+                    messageDiv.className = 'bg-blue-100 text-blue-700 border border-blue-300';
+                    break;
+            }
+            
+            messageDiv.classList.remove('hidden');
+            
+            setTimeout(() => {
+                messageDiv.classList.add('hidden');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
